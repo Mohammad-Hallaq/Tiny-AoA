@@ -39,7 +39,6 @@ def main(args):
     relative_contribution = perplexity_analysis_with_contributions(original_model, test_loader, criterion, args.device, num_iterations=args.num_iterations)
     
     # Step 2: Compute pruning ratios
-    print("\nCalculating pruning ratios...\n")
     pruning_ratios = calculate_pruning_ratios_intense(relative_contribution, max_pruning_ratio=args.max_pruning_ratio, k=args.k)
     print(f"Prunning ratios are: {pruning_ratios}")
     
