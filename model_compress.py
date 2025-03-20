@@ -7,9 +7,14 @@ from compression_utils.compression_functions import (
     selective_pruning
 )
 from data_utils.R22_dataset import R22_H5_Dataset
+import logging
+import numpy as np
+import os
 
 def main(args):
     
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     # Load the original model
     original_model = torch.load(args.model_path, map_location=args.device)
     
@@ -35,20 +40,21 @@ def main(args):
     criterion = nn.L1Loss()
     
     # Step 1: Compute relative contribution using perplexity analysis
-    print("Computing relative contribution...")
     relative_contribution = perplexity_analysis_with_contributions(original_model, test_loader, criterion, args.device, num_iterations=args.num_iterations)
     
     # Step 2: Compute pruning ratios
     pruning_ratios = calculate_pruning_ratios_intense(relative_contribution, max_pruning_ratio=args.max_pruning_ratio, k=args.k)
-    print(f"Prunning ratios are: {pruning_ratios}")
+    logging.info("\n=== Pruning Ratios ===")
+    logging.info(f"Pruning Ratios: {', '.join(f'{r:.2f}' for r in pruning_ratios)}")
     
     # Step 3: Perform selective pruning
-    print("Performing selective pruning...")
+    logging.info("\n=== Performing Selective Pruning ===")
     pruned_model = selective_pruning(original_model, args.pruning_method, pruning_ratios, train_loader, args.device)
     
     # Save pruned model
-    torch.save(pruned_model.state_dict(), args.output_model)
-    print(f"Pruned model saved at {args.output_model}")
+    os.makedirs('pruning_results', exist_ok=True)
+    torch.save(pruned_model, 'pruning_results/pruned_model')
+    logging.info(f"Pruned model saved at: pruning_results/pruned_model")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run model pruning using selective pruning method.")
@@ -61,7 +67,6 @@ if __name__ == "__main__":
     parser.add_argument("--max_pruning_ratio", type=float, default=0.9, help="Maximum pruning ratio.")
     parser.add_argument("--k", type=int, default=5, help="Scaling factor for pruning ratio computation.")
     parser.add_argument("--pruning_method", type=str, default="channel_pruning_Taylor_importance", help="Pruning method to use.")
-    parser.add_argument("--output_model", type=str, default='pruning_results/pruned_model.h5', help="Path to save the pruned model.")
     
     args = parser.parse_args()
     main(args)

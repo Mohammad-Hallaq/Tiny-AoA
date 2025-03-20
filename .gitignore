@@ -1,3 +1,13 @@
 data_h5py_files/
 notebooks/
 lightning_logs/
+
+# Ignore virtual environments
+venv/
+.venv/
+env/
+.env/
+*/venv/
+*/.venv/
+*/env/
+*/.env/

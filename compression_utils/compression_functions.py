@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import torch_pruning as tp
 import numpy as np
+import logging
 
 def prune_model(trained_model, prune_method, pruning_ratios, train_loader):
     # Make a copy of the trained model
@@ -53,8 +54,6 @@ def prune_model(trained_model, prune_method, pruning_ratios, train_loader):
             ignored_layers_block = [pruning_info[j]["block"] for j in range(len(pruning_info)) if j != i]
             combined_ignored_layers = ignored_layers + ignored_layers_block
 
-            # print(f"Pruning block {i} with initial ratio: {pruning_ratio}")
-
             # Pruning loop: Continue pruning until no parameters are further reduced
             while True:
                 # Apply pruning for the current block
@@ -69,8 +68,6 @@ def prune_model(trained_model, prune_method, pruning_ratios, train_loader):
 
                 # Recalculate MACs and parameters after pruning
                 macs, nparams = tp.utils.count_ops_and_params(model, example_inputs)
-                # print(f"MACs: {macs / 1e9:.2f} G, #Params: {nparams / 1e3:.2f} K")
-                # print(f"Parameter reduction: {original_nparams - nparams}")
 
                 # Check if no parameters were reduced, then break the loop
                 if original_nparams - nparams == 0:
@@ -95,9 +92,9 @@ def perplexity_analysis_with_contributions(original_model, data_loader, criterio
     macs_reduction = []
 
     # Step 1: Compute the baseline loss (without block replacement)
-    print("Computing baseline loss without block replacement...")
+    logging.info("\n=== Computing Baseline Loss Without Block Replacement ===")
     baseline_loss = compute_baseline_loss(original_model, data_loader, criterion, device)
-    print(f"Baseline Loss: {baseline_loss}")
+    logging.info(f"Baseline Loss: {baseline_loss:.2f}")
 
     example_inputs = torch.randn(1, 8, 4096).to(device)  # Generate example input for calculating MACs and parameters
     original_macs, original_nparams = tp.utils.count_ops_and_params(original_model, example_inputs)
@@ -107,14 +104,15 @@ def perplexity_analysis_with_contributions(original_model, data_loader, criterio
 
         # output_channels = get_first_layer_output_channels(original_model)
 
-        print(f"Replacing block {block_idx}")
+        logging.info("\n=== Replacing Blocks and Tracking Reductions ===")
         pruning_ratios = pruning_ratios = (np.eye(len(original_model.blocks)) * 0.8)[block_idx]
-
-        # print("Pruning ratios for this iteration are: ", pruning_ratios)
         
         pruned_model, macs, nparams = prune_model(original_model,'channel_pruning_Taylor_importance', pruning_ratios, data_loader)
 
-        print(f"Macs reduction is: {((original_macs - macs) / original_macs * 100):.2f}%\n", f"Parameters reduction is: {((original_nparams - nparams)/original_nparams*100):.2f}%")
+        logging.info(f"\nReplacing Block {block_idx}:")
+        logging.info(f"  - MACs Reduction: {((original_macs - macs) / original_macs * 100):.2f}%")
+        logging.info(f"  - Parameters Reduction: {((original_nparams - nparams)/original_nparams*100):.2f}%")
+        
 
         # Record the parameter reduction
         params_reduction.append(original_nparams - nparams)
@@ -134,8 +132,8 @@ def perplexity_analysis_with_contributions(original_model, data_loader, criterio
 
         # Calculate average loss for the current block
         average_loss = total_loss / len(data_loader)
-        print(f'Loss for block {block_idx}: {average_loss}')
-        
+        logging.info(f"  - Loss: {loss:.2f}")
+
         # Accumulate the loss for each block
         total_block_losses[block_idx] += average_loss
 
@@ -156,7 +154,7 @@ def perplexity_analysis_with_contributions(original_model, data_loader, criterio
     # Step 3: Calculate the relative contribution of each block to the total increase in loss and params saved
     relative_contributions = []
     weighted_importance_scores = []
-    print("\nRelative contribution of each block to total loss increase and parameter reduction:")
+    logging.info("\n=== Relative Contribution of Each Block ===")
 
     for block_idx in range(len(original_model.blocks)):
         # Calculate relative contribution to the loss increase
@@ -172,8 +170,12 @@ def perplexity_analysis_with_contributions(original_model, data_loader, criterio
         weight_macs = 0.2
         weighted_importance = (weight_loss * relative_contribution_loss) + (weight_params * relative_contribution_params) + (weight_macs * relative_contribution_macs)
 
-        print(f'Block {block_idx} contributes {relative_contribution_loss:.2f}% to the total increase in loss and reduces {100 - relative_contribution_params:.2f}% of parameters.')
-        print(f'Weighted importance score for Block {block_idx}: {weighted_importance:.2f}')
+        logging.info(
+        f"Block {block_idx}: Loss Increase Contribution = {relative_contribution_loss:.2f}%, "
+        f"Parameter Reduction = {100 - relative_contribution_params:.2f}%, "
+        f"MACs Reduction = {100 - relative_contribution_macs:.2f}%, "
+        f"Weighted Importance Score = {weighted_importance:.2f}"
+        )   
         
         relative_contributions.append(relative_contribution_loss)
         weighted_importance_scores.append(weighted_importance)
@@ -294,7 +296,9 @@ def selective_pruning(trained_model, prune_method, pruning_ratios, train_loader,
     # Counting MACs and Params after pruning
     example_inputs = torch.randn(1, 8, 4096).to(device)  # Generate example input for calculating MACs and parameters
     macs, nparams = tp.utils.count_ops_and_params(model, example_inputs)
-    print(f"MACs of the pruned model: {macs / 1e9} G, #Params of the pruned model: {nparams / 1e3} K")
+
+    logging.info(f"MACs of the Pruned Model: {macs/ 1e9} G")
+    logging.info(f"# Parameters of the Pruned Model: {nparams/ 1e3} K")
 
     # Free up GPU memory
     del x, y, batch
