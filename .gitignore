@@ -1,6 +1,7 @@
 data_h5py_files/
 notebooks/
 lightning_logs/
+__pycache__/
 
 # Ignore virtual environments
 venv/
